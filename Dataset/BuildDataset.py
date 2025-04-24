@@ -5,10 +5,8 @@ from dotenv import load_dotenv
 from pprint import pprint
 
 from MusicDownloader import download_youtube_audio
-# Carica le variabili d'ambiente dal file .env (se lo usi)
 load_dotenv()
 
-# Recupera le credenziali dall'ambiente
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("API_KEY")
 
