@@ -140,10 +140,12 @@ def test_classifier(model, loader):
 def perc_error(gt, pred):
     return (1-accuracy_score(gt, pred))*100
 
-def train_classifier(model, train_loader, test_loader, exp_name="experiment", lr=0.001, epochs=10, momentum=0.99, logdir="logs"):
+def train_classifier(model, train_loader, test_loader, criterionL, exp_name="experiment", lr=0.001, epochs=10, momentum=0.99, weight_decay=0.001, logdir="logs"):
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = SGD(model.parameters(), lr=lr, momentum=momentum)
+    if criterionL is None:
+        criterionL = nn.CrossEntropyLoss()
+    criterion = criterionL
+    optimizer = SGD(model.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
     #meters
     loss_meter = AverageValueMeter()
     acc_meter = AverageValueMeter()
@@ -242,35 +244,36 @@ class LogisticRegressor(nn.Module):
     def __init__(self, in_size, out_size):
         super(LogisticRegressor, self).__init__()
         self.linear = nn.Linear(in_size, out_size)
-        self.sigmoid = nn.Sigmoid()
-
     def forward(self, x):
-        z = self.linear(x)
-        p = self.sigmoid(z)
-        return p
+        return self.linear(x)
 
-class LeNetV2Color(nn.Module):
-    def __init__(self):
-        super(LeNetV2Color, self).__init__()
-        self.feature_extractor = nn.Sequential(
-            nn.Conv2d(3, 18, 5),
-            nn.AvgPool2d(2),
-            nn.ReLU(),
-            nn.Conv2d(18, 28, 5),
-            nn.AvgPool2d(2),
-            nn.ReLU()
-        )
-
-        self.classifier = nn.Sequential(
-            nn.Linear(700, 360),
-            nn.ReLU(),
-            nn.Linear(360, 252),
-            nn.ReLU(),
-            nn.Linear(252, 100)
-        )
-
+class SoftMaxRegressor(nn.Module):
+    def __init__(self, in_size, out_size):
+        super(SoftMaxRegressor, self).__init__()
+        self.linear = nn.Linear(in_size, out_size)
     def forward(self, x):
-        x = self.feature_extractor(x)
-        x = x.view(x.shape[0], -1)
-        return self.classifier(x)
+        return self.linear(x)
     
+class MLPClassifier(nn.Module):
+    def __init__(self, in_features, hidden_units ,out_classes):
+        super(MLPClassifier, self).__init__()
+        self.hidden_layer = nn.Linear(in_features, hidden_units)
+        self.activation = nn.ReLU()
+        self.output_layer = nn.Linear(hidden_units, out_classes)
+    def forward(self, x):
+        x = self.hidden_layer(x)
+        x = self.activation(x)
+        return self.output_layer(x)
+    
+class DeepMLPClassifier(nn.Module):
+    def __init__(self, in_features, hidden_units ,out_classes):
+        super(DeepMLPClassifier, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(in_features, hidden_units),
+            nn.ReLU(),
+            nn.Linear(hidden_units, hidden_units),
+            nn.ReLU(),
+            nn.Linear(hidden_units, out_classes)
+        )
+    def forward(self, x):
+        return self.model(x)

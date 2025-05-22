@@ -1,1 +1,6 @@
 Directory del modello
+
+Modelli utilizzati:
+- Logistic regressor
+- Softmax regressor
+- MLPClassifier

@@ -19,7 +19,7 @@ import ssl
 import json
 ssl._create_default_https_context = ssl._create_unverified_context
 
-fd = pd.read_csv('../Dataset/TrackFeatures4.csv')
+# fd = pd.read_csv('../Dataset/TrackFeatures4.csv')
 
 # X_scaled, y_encoded = libProject.doPreprocessing(fd)
 
@@ -52,13 +52,16 @@ test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=False)
 print("Input size:", x_train.shape[1])
 print("Output size:", len(np.unique(y_train)))
 
-
-name = f"LogisticRegressor_{int(time.time())}"
-lr = 0.1
-epochs = 10000
+#cambia modello qui
+name = f"DeepMLPClassifierHU64_{int(time.time())}"
+loss = nn.CrossEntropyLoss()
+lr = 0.01
+epochs = 1000
 momentum = 0.99
-model = libProject.LogisticRegressor(x_train.shape[1], len(np.unique(y_train)))
-model = libProject.train_classifier(model, train_loader, test_loader, exp_name=name, lr=lr, epochs=epochs, momentum=momentum)
+wight_decay = 0.001
+#e cambialo anche qui
+model = libProject.DeepMLPClassifier(x_train.shape[1], 64, len(np.unique(y_train)))
+model = libProject.train_classifier(model, train_loader, test_loader, loss, exp_name=name, lr=lr, epochs=epochs, momentum=momentum, weight_decay=wight_decay)
 
 predictions_train, labels_train = libProject.test_classifier(model, train_loader)
 predictions_test, labels_test = libProject.test_classifier(model, test_loader)
@@ -71,7 +74,9 @@ metrics.append({
     'parameters': {
         'learning_rate': lr,
         'epochs': epochs,
-        'momentum': momentum
+        'momentum': momentum,
+        'weight_decay': wight_decay,
+        'loss' : str(loss)
     },
     'train_classification_report': classification_report(labels_train, predictions_train, output_dict=True),
     'test_classification_report': classification_report(labels_test, predictions_test, output_dict=True),
