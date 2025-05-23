@@ -43,3 +43,5 @@ __pycache__/
 .ipynb_checkpoints/
 
 Model/preprocessed_data.json
+Model/preprocessed_data_macro_balanced.json
+Model/preprocessed_data_macro.json

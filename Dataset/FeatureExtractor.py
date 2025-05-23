@@ -77,3 +77,45 @@ def extract_features(path, sec=30) -> dict:
             "interval_std": std_interval
             }
     }
+
+def extract_features2(path, sec=30) -> dict:
+    """
+    Estrae le feature audio da un file MP3 senza compattarle/summarizzarle:
+    - MFCC, Chroma, Spectral contrast, ZCR -> matrici complete
+    - Tempo & Beats -> invariati
+    """
+    print(f"\n\n\n🎧 Caricamento audio da: {path} di {sec} sec")
+    y, sr = librosa.load(path, sr=None)
+    print("🎧 Audio caricato")
+
+    # 1. MFCC
+    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+
+    # 2. Chroma
+    chroma = librosa.feature.chroma_stft(y=y, sr=sr)
+
+    # 3. Spectral Contrast
+    spec_contrast = librosa.feature.spectral_contrast(y=y, sr=sr)
+
+    # 4. Zero-Crossing Rate
+    zcr = librosa.feature.zero_crossing_rate(y)
+
+    # 5. Tempo & Beats
+    tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
+    beats_count = len(beats)
+    beat_intervals = np.diff(beats)
+    mean_interval = np.mean(beat_intervals) if beat_intervals.size > 0 else 0
+    std_interval = np.std(beat_intervals) if beat_intervals.size > 0 else 0
+
+    return {
+        "mfccs": mfccs.tolist(),
+        "chroma": chroma.tolist(),
+        "spec_contrast": spec_contrast.tolist(),
+        "zcr": zcr.tolist(),
+        "tempo": tempo,
+        "beats": {
+            "count": beats_count,
+            "interval_mean": mean_interval,
+            "interval_std": std_interval
+        }
+    }

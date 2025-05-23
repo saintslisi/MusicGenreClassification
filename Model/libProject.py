@@ -90,15 +90,14 @@ def doPreprocessing(fd):
     X = np.stack(feature_matrix.to_numpy())  # Convertiamo in matrice numpy
 
     # Label (target)
-    y = fd[fd.columns[1]]  # Etichetta dei generi musicali
+    y = fd[fd.columns[-1]]  # Etichetta dei generi musicali (ultima colonna)
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     joblib.dump(scaler, "scaler_sicuro.pkl") # Salva lo scaler
 
-    label_encoder = LabelEncoder()
-    y_encoded = label_encoder.fit_transform(y)  # y → array di interi
-    joblib.dump(label_encoder, "labelEncoder_sicuro.pkl") # Salva il label encoder
+    # Se y è già 0...N-1, non serve LabelEncoder
+    y_encoded = y.to_numpy()  # oppure np.array(y)
     print("Preprocessing completato.")
     return X_scaled, y_encoded
 
@@ -145,7 +144,7 @@ def train_classifier(model, train_loader, test_loader, criterionL, exp_name="exp
     if criterionL is None:
         criterionL = nn.CrossEntropyLoss()
     criterion = criterionL
-    optimizer = SGD(model.parameters(), lr=lr, weight_decay=weight_decay, momentum=momentum)
+    optimizer = SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
     #meters
     loss_meter = AverageValueMeter()
     acc_meter = AverageValueMeter()
@@ -255,7 +254,7 @@ class SoftMaxRegressor(nn.Module):
         return self.linear(x)
     
 class MLPClassifier(nn.Module):
-    def __init__(self, in_features, hidden_units ,out_classes):
+    def __init__(self, in_features, hidden_units, out_classes):
         super(MLPClassifier, self).__init__()
         self.hidden_layer = nn.Linear(in_features, hidden_units)
         self.activation = nn.ReLU()
@@ -266,13 +265,18 @@ class MLPClassifier(nn.Module):
         return self.output_layer(x)
     
 class DeepMLPClassifier(nn.Module):
-    def __init__(self, in_features, hidden_units ,out_classes):
+    def __init__(self, in_features, hidden_units, out_classes, dropout = 0.5):
         super(DeepMLPClassifier, self).__init__()
         self.model = nn.Sequential(
             nn.Linear(in_features, hidden_units),
             nn.ReLU(),
+            #nn.Dropout(dropout),
             nn.Linear(hidden_units, hidden_units),
             nn.ReLU(),
+            #nn.Dropout(dropout),
+            nn.Linear(hidden_units, hidden_units),
+            nn.ReLU(),
+            #nn.Dropout(dropout),
             nn.Linear(hidden_units, out_classes)
         )
     def forward(self, x):

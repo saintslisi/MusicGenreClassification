@@ -4,3 +4,4 @@ Modelli utilizzati:
 - Logistic regressor
 - Softmax regressor
 - MLPClassifier
+- DeepMLPClassifier
