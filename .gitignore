@@ -14,6 +14,8 @@ desktop.ini
 node_modules/
 venv/
 logs/
+logs2/
+img/
 env/
 build/
 dist/
@@ -29,6 +31,7 @@ __pycache__/
 *.pth
 *.pkl
 *.csv
+*.npz
 
 # File di editor o IDE
 .vscode/
@@ -45,3 +48,5 @@ __pycache__/
 Model/preprocessed_data.json
 Model/preprocessed_data_macro_balanced.json
 Model/preprocessed_data_macro.json
+Model/metrics2.json
+Model/metrics3.json

@@ -84,22 +84,23 @@ class AudioFeaturesDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
     
-def doPreprocessing(fd):
+def doPreprocessing(fd, scaler=None, fit_scaler=True):
     print("Preprocessing in corso...")
     feature_matrix = fd.apply(preprocess_row, axis=1)
-    X = np.stack(feature_matrix.to_numpy())  # Convertiamo in matrice numpy
+    X = np.stack(feature_matrix.to_numpy())
+    y = fd[fd.columns[-1]]
 
-    # Label (target)
-    y = fd[fd.columns[-1]]  # Etichetta dei generi musicali (ultima colonna)
+    if scaler is None:
+        scaler = StandardScaler()
+    if fit_scaler:
+        X_scaled = scaler.fit_transform(X)
+        joblib.dump(scaler, "scaler_sicuro.pkl")
+    else:
+        X_scaled = scaler.transform(X)
 
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    joblib.dump(scaler, "scaler_sicuro.pkl") # Salva lo scaler
-
-    # Se y è già 0...N-1, non serve LabelEncoder
-    y_encoded = y.to_numpy()  # oppure np.array(y)
+    y_encoded = y.to_numpy()
     print("Preprocessing completato.")
-    return X_scaled, y_encoded
+    return X_scaled, y_encoded, scaler
 
 class AverageValueMeter():
     def __init__(self):
@@ -118,6 +119,16 @@ class AverageValueMeter():
             return self.sum / self.count
         except:
             return None
+        
+def top_k_accuracy(output, target, k=3):
+    """Restituisce la top-k accuracy per un batch."""
+    with torch.no_grad():
+        # output: [batch_size, num_classes]
+        # target: [batch_size]
+        topk = output.topk(k, dim=1).indices  # [batch_size, k]
+        # Confronta se il target è tra i top-k
+        correct = topk.eq(target.unsqueeze(1)).sum().item()
+        return correct / target.size(0)
         
 def test_classifier(model, loader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -139,79 +150,89 @@ def test_classifier(model, loader):
 def perc_error(gt, pred):
     return (1-accuracy_score(gt, pred))*100
 
-def train_classifier(model, train_loader, test_loader, criterionL, exp_name="experiment", lr=0.001, epochs=10, momentum=0.99, weight_decay=0.001, logdir="logs"):
-
+def train_classifier(model, train_loader, test_loader, criterionL, exp_name="experiment", lr=0.001, epochs=10, momentum=0.99, weight_decay=0.001, logdir="logs2", early_stopping_patience=10):
     if criterionL is None:
         criterionL = nn.CrossEntropyLoss()
     criterion = criterionL
     optimizer = SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-    #meters
     loss_meter = AverageValueMeter()
     acc_meter = AverageValueMeter()
-    #writer
+    acc3_meter = AverageValueMeter()
     writer = SummaryWriter(join(logdir, exp_name))
-    #device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    #definiamo un dizionario contenente i loader di training e testing
-    loader = {
-        "train": train_loader,
-        "test": test_loader
-    }
-    #inizializziamo il global step
+    loader = {"train": train_loader, "test": test_loader}
     global_step = 0
+
+    # Early stopping variables
+    best_val_loss = float('inf')
+    patience_counter = 0
 
     for e in range(epochs):
         print(f"Epoch {e+1}/{epochs}")
-        #iteriamo sui loader
         for mode in ["train", "test"]:
-            #resettiamo i meter
             loss_meter.reset()
             acc_meter.reset()
-            #settiamo il modello in training o evaluation
+            acc3_meter.reset()
             if mode == "train":
                 model.train()
             else:
                 model.eval()
-            #abilitiamo i gradienti solo in training
             with torch.set_grad_enabled(mode == "train"):
                 for i, batch in enumerate(loader[mode]):
-                    #prendiamo i dati e le etichette
                     x, y = batch
-                    #spostiamo i dati sul device
                     x = x.to(device)
                     y = y.to(device)
-                    #calcoliamo l'output del modello
                     output = model(x)
-                    #aggiorniamo il global step
-                    #conterrà il numero di campioni visti durante il training
                     n = x.shape[0]
                     global_step += n
-                    #calcoliamo la loss
                     loss = criterion(output, y.long())
-                    #se siamo in training facciamo il backward e l'ottimizzazione
                     if mode == "train":
                         loss.backward()
                         optimizer.step()
                         optimizer.zero_grad()
-                    #aggiorniamo il meter della loss
                     acc = accuracy_score(y.cpu(), output.max(1)[1].cpu())
+                    top3_acc = top_k_accuracy(output, y, k=3)
                     loss_meter.add(loss.item(), n)
                     acc_meter.add(acc, n)
-                    #loggiamo i risultati iterazione per iterazione solo in training
+                    acc3_meter.add(top3_acc, n)
                     if mode == "train":
                         writer.add_scalar("loss/train", loss_meter.value(), global_step=global_step)
                         writer.add_scalar("accuracy/train", acc_meter.value(), global_step=global_step)
-            #una volta finita l'epoca (sia nel caso di training che di testing) logghiamo i risultati
+                        writer.add_scalar("top3_accuracy/train", acc3_meter.value(), global_step=global_step)
             writer.add_scalar("loss/"+mode, loss_meter.value(), global_step=global_step)
-            writer.add_scalar("accuracy/"+mode, acc_meter.value(), global_step=global_step)   
-        #salviamo il modello
-    torch.save(model.state_dict(), "models_weights/%s.pth" % (exp_name))   
-    return model           
+            writer.add_scalar("accuracy/"+mode, acc_meter.value(), global_step=global_step)
+            writer.add_scalar("top3_accuracy/"+mode, acc3_meter.value(), global_step=global_step)
+
+        # Early stopping check (dopo ogni epoca)
+        val_loss = loss_meter.value()  # loss_meter contiene la loss dell'ultimo mode (test)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+            # Salva il modello migliore
+            torch.save(model.state_dict(), "models_weights/%s_best.pth" % (exp_name))
+        else:
+            patience_counter += 1
+            if patience_counter >= early_stopping_patience:
+                print(f"Early stopping triggered at epoch {e+1}")
+                # Carica il modello migliore prima di uscire
+                model.load_state_dict(torch.load("models_weights/%s_best.pth" % (exp_name)))
+                return model
+
+    torch.save(model.state_dict(), "models_weights/%s.pth" % (exp_name))
+    return model          
 
 def print_metrics_from_json(json_path="metrics.json"):
     with open(json_path, "r") as f:
         data = json.load(f)
+
+    # Per trovare i migliori modelli
+    best_acc = -1
+    best_acc_model = None
+    best_f1_macro = -1
+    best_f1_macro_model = None
+    best_f1_weighted = -1
+    best_f1_weighted_model = None
 
     for model_info in data:
         print(f"\nModel: {model_info.get('model', 'N/A')}")
@@ -237,14 +258,28 @@ def print_metrics_from_json(json_path="metrics.json"):
             for k, v in weighted_avg.items():
                 print(f"      {k}: {v}")
 
-# MODELLI
+        # Trova i migliori modelli sulla base del test set
+        test_metrics = model_info.get("test_classification_report", {})
+        test_acc = test_metrics.get("accuracy", -1)
+        test_f1_macro = test_metrics.get("macro avg", {}).get("f1-score", -1)
+        test_f1_weighted = test_metrics.get("weighted avg", {}).get("f1-score", -1)
 
-class LogisticRegressor(nn.Module):
-    def __init__(self, in_size, out_size):
-        super(LogisticRegressor, self).__init__()
-        self.linear = nn.Linear(in_size, out_size)
-    def forward(self, x):
-        return self.linear(x)
+        if test_acc is not None and test_acc > best_acc:
+            best_acc = test_acc
+            best_acc_model = model_info.get('model', 'N/A')
+        if test_f1_macro is not None and test_f1_macro > best_f1_macro:
+            best_f1_macro = test_f1_macro
+            best_f1_macro_model = model_info.get('model', 'N/A')
+        if test_f1_weighted is not None and test_f1_weighted > best_f1_weighted:
+            best_f1_weighted = test_f1_weighted
+            best_f1_weighted_model = model_info.get('model', 'N/A')
+
+    print("\n--- Migliori modelli sul test set ---")
+    print(f"Test accuracy più alta: {best_acc_model} ({best_acc})")
+    print(f"Test f1 macro più alta: {best_f1_macro_model} ({best_f1_macro})")
+    print(f"Test f1 weighted più alta: {best_f1_weighted_model} ({best_f1_weighted})")
+
+# MODELLI
 
 class SoftMaxRegressor(nn.Module):
     def __init__(self, in_size, out_size):
@@ -254,30 +289,29 @@ class SoftMaxRegressor(nn.Module):
         return self.linear(x)
     
 class MLPClassifier(nn.Module):
-    def __init__(self, in_features, hidden_units, out_classes):
+    def __init__(self, in_features, hidden_units, out_classes, dropout=0.3):
         super(MLPClassifier, self).__init__()
         self.hidden_layer = nn.Linear(in_features, hidden_units)
         self.activation = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
         self.output_layer = nn.Linear(hidden_units, out_classes)
     def forward(self, x):
         x = self.hidden_layer(x)
         x = self.activation(x)
+        #x = self.dropout(x)
         return self.output_layer(x)
     
 class DeepMLPClassifier(nn.Module):
-    def __init__(self, in_features, hidden_units, out_classes, dropout = 0.5):
+    def __init__(self, in_features, hidden_units, out_classes, dropout = 0.3):
         super(DeepMLPClassifier, self).__init__()
         self.model = nn.Sequential(
             nn.Linear(in_features, hidden_units),
             nn.ReLU(),
-            #nn.Dropout(dropout),
-            nn.Linear(hidden_units, hidden_units),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_units, int(hidden_units/2)),
             nn.ReLU(),
-            #nn.Dropout(dropout),
-            nn.Linear(hidden_units, hidden_units),
-            nn.ReLU(),
-            #nn.Dropout(dropout),
-            nn.Linear(hidden_units, out_classes)
+            nn.Dropout(dropout),
+            nn.Linear(int(hidden_units/2), out_classes)
         )
     def forward(self, x):
         return self.model(x)

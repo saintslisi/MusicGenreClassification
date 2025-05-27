@@ -18,77 +18,99 @@ import joblib
 import ssl
 import json
 import matplotlib.pyplot as plt
+import os
+import random
 ssl._create_default_https_context = ssl._create_unverified_context
 
-# fd = pd.read_csv('../Dataset/dataset_macro_generi.csv')
+seed = 17
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
-# X_scaled, y_encoded = libProject.doPreprocessing(fd)
+train_df = pd.read_csv('../Dataset/train_balanced.csv')
+test_df = pd.read_csv('../Dataset/test_clean.csv')
 
-# # Salva X_scaled e y_encoded in un file JSON
-# with open('preprocessed_data_macro.json', 'w') as f_json:
-#     json.dump({
-#         'X_scaled': X_scaled.tolist(),
-#         'y_encoded': y_encoded.tolist()
-#     }, f_json)
+if not (os.path.exists('X_train.npz') and os.path.exists('X_test.npz')):
+    # Preprocessing train
+    x_train, y_train, scaler = libProject.doPreprocessing(train_df, scaler=None, fit_scaler=True)
+    # Preprocessing test (usa lo stesso scaler)
+    x_test, y_test, _ = libProject.doPreprocessing(test_df, scaler=scaler, fit_scaler=False)
+    np.savez_compressed('X_train.npz', x=x_train, y=y_train)
+    np.savez_compressed('X_test.npz', x=x_test, y=y_test)
+else:
+    train_data = np.load('X_train.npz')
+    x_train, y_train = train_data['x'], train_data['y']
+    test_data = np.load('X_test.npz')
+    x_test, y_test = test_data['x'], test_data['y']
 
-# Carica X_scaled e y_encoded dal file JSON se non presente il file crearlo con il codice commentato sopra
-with open('preprocessed_data_macro_balanced.json', 'r') as f_json:
-    data = json.load(f_json)
-    X_scaled = np.array(data['X_scaled'])
-    y_encoded = np.array(data['y_encoded'])
-
-#distribuzione in train e test
-x_train, x_test, y_train, y_test = train_test_split(
-    X_scaled, y_encoded, test_size=0.2, random_state=123, stratify=y_encoded
-)
+# #distribuzione in train e test
+# x_train, x_test, y_train, y_test = train_test_split(
+#     X_scaled, y_encoded, test_size=0.2, random_state=123, stratify=y_encoded
+# )
 
 # Crea i dataset
 train_dataset = libProject.AudioFeaturesDataset(x_train, y_train)
 test_dataset   = libProject.AudioFeaturesDataset(x_test, y_test)
 
-# Crea i DataLoader
-train_loader = DataLoader(train_dataset, batch_size=1024, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=False)
+with open('par.json', 'r') as f:
+    param_grid = json.load(f)
 
-print("Input size:", x_train.shape[1])
-print("Output size:", len(np.unique(y_train)))
+for i, values in enumerate(param_grid):
+    print(f"Training model with parameters set {i+1}")
+    epochs = 1000
+    batch_size = values.get('batch_size', 256)
+    lr = values.get('learning_rate', 0.001)
+    momentum = values.get('momentum', 0.95)
+    wight_decay = values.get('weight_decay', 0.0005)
+    dropout = values.get('dropout', 0.5)
+    hidden_units = values.get('hidden_units', 1024)
 
-#cambia modello qui
-name = f"MLPClassifierHU1024_{int(time.time())}"
-loss = nn.CrossEntropyLoss()
-lr = 0.01
-epochs = 100
-momentum = 0.9
-wight_decay = 0.0001
-dropout = 0.5
-#e cambialo anche qui
-model = libProject.MLPClassifier(x_train.shape[1], 1024, len(np.unique(y_train)))
-model = libProject.train_classifier(model, train_loader, test_loader, loss, exp_name=name, lr=lr, epochs=epochs, momentum=momentum, weight_decay=wight_decay)
+    # Crea i DataLoader
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-predictions_train, labels_train = libProject.test_classifier(model, train_loader)
-predictions_test, labels_test = libProject.test_classifier(model, test_loader)
+    print("Input size:", x_train.shape[1]) #5944
+    print("Output size:", len(np.unique(y_train))) #9
 
-with open('metrics.json', 'r') as f:
-    metrics = json.load(f)
+    #cambia modello qui
+    name = f"DeepMLPClassifier_{int(time.time())}"
+    loss = nn.CrossEntropyLoss()
 
-metrics.append({
-    'model': name,
-    'parameters': {
-        'learning_rate': lr,
-        'epochs': epochs,
-        'momentum': momentum,
-        'weight_decay': wight_decay,
-        'batch_size': 1024,
-        #'dropout': dropout
-    },
-    'train_classification_report': classification_report(labels_train, predictions_train, output_dict=True),
-    'test_classification_report': classification_report(labels_test, predictions_test, output_dict=True),
-})
+    #e cambialo anche qui
+    model = libProject.DeepMLPClassifier(x_train.shape[1], hidden_units, len(np.unique(y_train)), dropout=dropout)
+    model = libProject.train_classifier(model, train_loader, test_loader, loss, exp_name=name, lr=lr, epochs=epochs, momentum=momentum, weight_decay=wight_decay, early_stopping_patience=10)
 
-with open('metrics.json', 'w') as f:
-    json.dump(metrics, f, indent=4)
+    predictions_train, labels_train = libProject.test_classifier(model, train_loader)
+    predictions_test, labels_test = libProject.test_classifier(model, test_loader)
 
-libProject.print_metrics_from_json('metrics.json')
+    if os.path.exists('metrics2.json'):
+        with open('metrics2.json', 'r') as f:
+            metrics = json.load(f)
+    else:
+        metrics = []
+
+    metrics.append({
+        'model': name,
+        'parameters': {
+            'learning_rate': lr,
+            'epochs': epochs,
+            'momentum': momentum,
+            'weight_decay': wight_decay,
+            'batch_size': batch_size,
+            'dropout': dropout,
+            'hidden_units': hidden_units
+        },
+        'train_classification_report': classification_report(labels_train, predictions_train, output_dict=True),
+        'test_classification_report': classification_report(labels_test, predictions_test, output_dict=True),
+    })
+
+    with open('metrics2.json', 'w') as f:
+        json.dump(metrics, f, indent=4)
+
+    libProject.print_metrics_from_json('metrics2.json')
 
 
 # # Mappa ID → nome del macro-genere (in ordine!)

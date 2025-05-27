@@ -41,7 +41,7 @@ genre_to_macro = {
 }
 
 # Leggi il dataset originale (senza modificarlo)
-df_original = pd.read_csv("../Dataset/TrackFeatures4.csv")
+df_original = pd.read_csv("TrackFeatures4.csv")
 print(f"✅ Righe originali: {len(df_original)}")
 
 # Rimuovi duplicati
@@ -76,6 +76,6 @@ for genre, idx in macro_genre_to_id.items():
     print(f"{idx}: {genre}")
 
 # Salva il nuovo dataset in un file CSV separato
-output_path = "../Dataset/dataset_macro_generi.csv"
+output_path = "dataset_macro_generi.csv"
 df.to_csv(output_path, index=False)
 print(f"\n💾 Dataset salvato in: {output_path}")
