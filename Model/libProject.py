@@ -1,3 +1,4 @@
+# Importazione delle librerie necessarie
 import torch
 import numpy as np
 import torch.nn as nn
@@ -16,29 +17,32 @@ from sklearn.model_selection import train_test_split
 import joblib
 import ssl
 import json
+
+# Disabilita la verifica del certificato SSL (utile per download in ambienti protetti)
 ssl._create_default_https_context = ssl._create_unverified_context
 
 def string_to_dict(fd, key):
-    """Converte una stringa in un dizionario Python"""
+    """Converte una stringa in un dizionario Python e restituisce mean e std come Serie."""
     print(f"\nConverto le stringhe di '{key}' contenenti mean e std in dizionari Python")
     parsed = fd[key].apply(ast.literal_eval)
     mean = parsed.apply(lambda x: x['mean'])
     std = parsed.apply(lambda x: x['std'])
     return mean, std
 
-# Appiattisci una matrice 2D in un vettore 1D
+# Appiattisce una matrice 2D in un vettore 1D
 def flatten_feature_matrix(matrix):
     return np.array(matrix).flatten()
 
 i=0
 
-# Funzione per il preprocessing di una singola riga
+# Funzione per il preprocessing di una singola riga del DataFrame
 def preprocess_row(row):
     global i
     print(f"\nPreprocessing riga {i}...")
 
     i+=1
     try:
+        # Parsing delle feature dalla stringa a oggetto Python
         mfccs = ast.literal_eval(row['mfccs'])
         chroma = ast.literal_eval(row['chroma'])
         spec_contrast = ast.literal_eval(row['spec_contrast'])
@@ -46,6 +50,7 @@ def preprocess_row(row):
         beats = ast.literal_eval(row['beats'])
         tempo_feature = float(row['tempo'].replace("[", "").replace("]", ""))
 
+        # Appiattimento e concatenazione delle feature
         mfccs_vec = np.concatenate([
             flatten_feature_matrix(mfccs['mean']),
             flatten_feature_matrix(mfccs['std'])
@@ -68,13 +73,15 @@ def preprocess_row(row):
 
         beats_vec = np.array([beats['count'], beats['interval_mean'], beats['interval_std']])
 
-        # Unisci tutte le feature in un vettore
+        # Unisce tutte le feature in un unico vettore
         return np.concatenate([mfccs_vec, chroma_vec, spec_vec, zcr_vec, [tempo_feature], beats_vec])
     except Exception as e:
         print(row)
         print(f"Errore nel preprocessing della riga {i}: {e}")
-        return np.zeros(5944)  # Restituisci un vettore di zeri della lunghezza corretta in caso di errore
+        # In caso di errore restituisce un vettore di zeri della lunghezza corretta
+        return np.zeros(5944)
 
+# Dataset personalizzato per PyTorch
 class AudioFeaturesDataset(Dataset):
     def __init__(self, X, y):
         self.X = torch.tensor(X, dtype=torch.float32)
@@ -85,6 +92,7 @@ class AudioFeaturesDataset(Dataset):
         return self.X[idx], self.y[idx]
     
 def doPreprocessing(fd, scaler=None, fit_scaler=True):
+    """Preprocessing del DataFrame: parsing, scaling e encoding delle label."""
     print("Preprocessing in corso...")
     feature_matrix = fd.apply(preprocess_row, axis=1)
     X = np.stack(feature_matrix.to_numpy())
@@ -102,6 +110,7 @@ def doPreprocessing(fd, scaler=None, fit_scaler=True):
     print("Preprocessing completato.")
     return X_scaled, y_encoded, scaler
 
+# Classe per la media pesata di valori (utile per logging)
 class AverageValueMeter():
     def __init__(self):
         self.reset()
@@ -131,6 +140,7 @@ def top_k_accuracy(output, target, k=3):
         return correct / target.size(0)
         
 def test_classifier(model, loader):
+    """Valuta il modello su un DataLoader e restituisce predizioni e label."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     predictions,labels = [], []
@@ -148,9 +158,13 @@ def test_classifier(model, loader):
     return np.array(predictions), np.array(labels)
 
 def perc_error(gt, pred):
+    """Restituisce la percentuale di errore tra ground truth e predizioni."""
     return (1-accuracy_score(gt, pred))*100
 
 def train_classifier(model, train_loader, test_loader, criterionL, exp_name="experiment", lr=0.001, epochs=10, momentum=0.99, weight_decay=0.001, logdir="logs2", early_stopping_patience=10):
+    """
+    Addestra un classificatore PyTorch con logging su TensorBoard e early stopping.
+    """
     if criterionL is None:
         criterionL = nn.CrossEntropyLoss()
     criterion = criterionL
@@ -164,7 +178,7 @@ def train_classifier(model, train_loader, test_loader, criterionL, exp_name="exp
     loader = {"train": train_loader, "test": test_loader}
     global_step = 0
 
-    # Early stopping variables
+    # Variabili per early stopping
     best_val_loss = float('inf')
     patience_counter = 0
 
@@ -204,7 +218,7 @@ def train_classifier(model, train_loader, test_loader, criterionL, exp_name="exp
             writer.add_scalar("accuracy/"+mode, acc_meter.value(), global_step=global_step)
             writer.add_scalar("top3_accuracy/"+mode, acc3_meter.value(), global_step=global_step)
 
-        # Early stopping check (dopo ogni epoca)
+        # Early stopping (dopo ogni epoca)
         val_loss = loss_meter.value()  # loss_meter contiene la loss dell'ultimo mode (test)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -223,6 +237,9 @@ def train_classifier(model, train_loader, test_loader, criterionL, exp_name="exp
     return model          
 
 def print_metrics_from_json(json_path="metrics.json"):
+    """
+    Stampa i risultati dei modelli salvati in un file JSON e individua i migliori.
+    """
     with open(json_path, "r") as f:
         data = json.load(f)
 
@@ -281,6 +298,7 @@ def print_metrics_from_json(json_path="metrics.json"):
 
 # MODELLI
 
+# Regressore Softmax (regressione logistica multiclasse)
 class SoftMaxRegressor(nn.Module):
     def __init__(self, in_size, out_size):
         super(SoftMaxRegressor, self).__init__()
@@ -288,6 +306,7 @@ class SoftMaxRegressor(nn.Module):
     def forward(self, x):
         return self.linear(x)
     
+# MLP semplice con un hidden layer
 class MLPClassifier(nn.Module):
     def __init__(self, in_features, hidden_units, out_classes, dropout=0.3):
         super(MLPClassifier, self).__init__()
@@ -301,6 +320,7 @@ class MLPClassifier(nn.Module):
         #x = self.dropout(x)
         return self.output_layer(x)
     
+# MLP profondo con due hidden layer e dropout
 class DeepMLPClassifier(nn.Module):
     def __init__(self, in_features, hidden_units, out_classes, dropout = 0.3):
         super(DeepMLPClassifier, self).__init__()
