@@ -3,17 +3,13 @@ import torch
 import numpy as np
 import torch.nn as nn
 from PIL import Image
-from torchvision import transforms
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 from torch.optim import SGD
 from torch.utils.tensorboard import SummaryWriter
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score
 from os.path import join
-import time
-import pandas as pd
 import ast
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 import joblib
 import ssl
 import json

@@ -5,19 +5,11 @@ import torch
 import numpy as np
 import torch.nn as nn
 from PIL import Image
-from torchvision import transforms
-from torch.utils.data import DataLoader, Dataset
-from torch.optim import SGD
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import DataLoader
 # Importa metriche di valutazione da scikit-learn
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
-from os.path import join
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 import time
 import pandas as pd
-import ast
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.model_selection import train_test_split
-import joblib
 import ssl
 import json
 import matplotlib.pyplot as plt
