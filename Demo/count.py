@@ -2,10 +2,10 @@ import pandas as pd
 
 def count_songs_by_genre(tracks_csv):
     # Carica il CSV
-    tracks_df = pd.read_csv(tracks_csv, encoding="utf-16")
+    tracks_df = pd.read_csv(tracks_csv, encoding="utf-8")
     
     # Calcola il totale per ogni genere
-    genre_counts = tracks_df["genre"].value_counts()
+    genre_counts = tracks_df["macro_genre"].value_counts()
     
     # Calcola il totale complessivo delle canzoni
     total_songs = len(tracks_df)

@@ -1,136 +1,117 @@
 import streamlit as st
-import pandas as pd
-import torch
-import torch.nn as nn
-import numpy as np
-import ast
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-import joblib
+
 from count import count_songs_by_genre
+from Dataset.MusicDownloader import download_youtube_audio
+from Modello.UseModel import *
 
-class MusicGenreClassifier(nn.Module):
-    def __init__(self):
-        super(MusicGenreClassifier, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(5944, 1000),
-            nn.ReLU(),
-            nn.Linear(1000, 256),
-            nn.ReLU(),
-            nn.Linear(256, 64),
-            #nn.ReLU(),
-            #nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 21)
-        )
+def reset_new_song_state():
+    for key in ["download_done", "audio_path", "x_new", "prediction_result"]:
+        st.session_state.pop(key, None)
+# -- INIZIO APP --
 
-    def forward(self, x):
-        return self.net(x)
-def string_to_dict(fd, key):
-    """Converte una stringa in un dizionario Python"""
-    print(f"\nConverto le stringhe di '{key}' contenenti mean e std in dizionari Python")
-    parsed = fd[key].apply(ast.literal_eval)
-    mean = parsed.apply(lambda x: x['mean'])
-    std = parsed.apply(lambda x: x['std'])
-    return mean, std
+st.title("🎶 Classificatore di Generi Musicali")
 
-# Appiattisci una matrice 2D in un vettore 1D
-def flatten_feature_matrix(matrix):
-    return np.array(matrix).flatten()
-i=0
-# Funzione per il preprocessing di una singola riga
-def preprocess_row(row):
-    global i
-    print(f"\nPreprocessing riga {i}...")
+# Stato persistente per scelta input
+if 'input_mode' not in st.session_state:
+    st.session_state.input_mode = None
 
-    i+=1
-    try:
-        mfccs = ast.literal_eval(row['mfccs'])
-        chroma = ast.literal_eval(row['chroma'])
-        spec_contrast = ast.literal_eval(row['spec_contrast'])
-        zcr = ast.literal_eval(row['zcr'])
-        beats = ast.literal_eval(row['beats'])
-        tempo_feature = float(row['tempo'].replace("[", "").replace("]", ""))
+# Layout dei pulsanti
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("➕ Inserisci nuova canzone"):
+        reset_new_song_state()
+        st.session_state.input_mode = "nuova"
+with col2:
+    if st.button("📁 Seleziona canzone esistente"):
+        st.session_state.input_mode = "esistente"
 
-        mfccs_vec = np.concatenate([
-            flatten_feature_matrix(mfccs['mean']),
-            flatten_feature_matrix(mfccs['std'])
-        ])
+# --- NUOVA CANZONE ---
+if st.session_state.input_mode == "nuova":
+    titolo = st.text_input("Inserisci titolo della canzone", key="titolo")
+    artista = st.text_input("Inserisci artista della canzone", key="artista")
 
-        chroma_vec = np.concatenate([
-            flatten_feature_matrix(chroma['mean']),
-            flatten_feature_matrix(chroma['std'])
-        ])
+    if titolo and artista and "download_done" not in st.session_state:
+        st.write("Scarico la canzone, attendi...")
+        titoloArtista = f"{titolo} {artista}"
+        path = "Demo/Track"
+        data = download_youtube_audio(titoloArtista, path, extract_sec=90)
+        st.session_state.download_done = True
+        st.session_state.audio_path = f"{path}/tmp.mp3"
+        st.session_state.x_new = insertData(data, titoloArtista, artista)
+        st.success("Download completato.")
+    
+    if "audio_path" in st.session_state:
+        st.audio(st.session_state.audio_path, format="audio/mp3")
 
-        spec_vec = np.concatenate([
-            flatten_feature_matrix(spec_contrast['mean']),
-            flatten_feature_matrix(spec_contrast['std'])
-        ])
+    if "x_new" in st.session_state:
+        if st.button("🎧 Predici il genere musicale", key="predici_nuova"):
+            generi, probabilità,YGeneri = useModel(x=st.session_state.x_new)
+            st.session_state.prediction_result = list(zip(generi, probabilità))
+            
 
-        zcr_vec = np.concatenate([
-            flatten_feature_matrix(zcr['mean']),
-            flatten_feature_matrix(zcr['std'])
-        ])
+    if "prediction_result" in st.session_state:
+        mess = "Genere corretto: "
 
-        beats_vec = np.array([beats['count'], beats['interval_mean'], beats['interval_std']])
+        YGenres = ast.literal_eval(YGeneri)
+        st.subheader("🎯 Risultati della predizione:")
+        for genre, prob in st.session_state.prediction_result:
+            st.write(f"- {genre}: **{prob * 100:.2f}%**")
 
-        # Unisci tutte le feature in un vettore
-        return np.concatenate([mfccs_vec, chroma_vec, spec_vec, zcr_vec, [tempo_feature], beats_vec])
-    except Exception as e:
-        print(row)
-        print(f"Errore nel preprocessing della riga {i}: {e}")
-        return np.zeros(5944)  # Restituisci un vettore di zeri della lunghezza corretta in caso di errore
+        mess = "Genere corretto: "
+        if len(YGenres) < 2:
+            mess+=f"**{YGenres[0]}**"
+        else:
+            for _,g in enumerate(YGenres):
+                mess += f"**{g}**"
+                if _ < len(YGenres)-1:
+                    mess += ", "
+        st.write(mess)     
+
+        st.session_state.clear()
+        st.session_state.input_mode = None
+        st.session_state.download_done = False
+        st.session_state.x_new = None
+        st.session_state.prediction_result = None
+        st.write("Sessione resettata.")      
+        titolo = None
+        artista = None
+        #reset_new_song_state()      
+# --- RESET SESSIONE ---
 
 
-fd = pd.read_csv('TestTracks.csv', encoding="utf-16")
-dim = fd.shape[0]
+# --- SELEZIONE DA FILE ---
+elif st.session_state.input_mode == "esistente":
+    fd = pd.read_csv('Demo/Modello/TestTracks.csv', encoding="utf-16")
+    dim = fd.shape[0]
 
-scaler = joblib.load("scaler_sicuro.pkl")
-pathOUT = "TestTracksFeatures.csv"
-y = ['Reggae', 'Jazz', 'Funk', 'Soul', 'House', 'Dubstep', 'Electronic', 'Blues',
-        'Disco', 'Pop', 'Classical', 'Hip-Hop', 'Drum and Bass', 'R&B', 'Techno',
-        'Country', 'Folk', 'Punk', 'Metal', 'Trance', 'Rock']
+    st.write("Scegli una canzone dal dataset:")
+    x = st.slider("Indice traccia", 0, dim-1)
+    title = fd.iloc[x]['title']
+    traccia = f"🎵 '{title.replace(f" {fd.iloc[x]['artist']}","")}' di {fd.iloc[x]['artist']}"
+    st.write(traccia)
 
-label_encoder = LabelEncoder()
-y_encoded = label_encoder.fit_transform(y)  # y → array di interi
-joblib.dump(scaler, "labelEncoder_sicuro.pkl")
+    if st.button("🎧 Predici il genere musicale"):
 
-x = 0
-st.write("Scegli un elemento dallo slider")
-x = st.slider('',0,dim)  # 👈 this is a widget   
-f = f"'{fd.iloc[x]['title']}' di {fd.iloc[x]['artist']}"
-st.write(f)
+        generi,probabilità,YGeneri = useModel(x=x)
+        YGenres = ast.literal_eval(YGeneri)
+        
+        #print(f"\n\nT GENERI\n\n:  {YGenres}")
+        st.subheader("🎯 Risultati della predizione:")
+        for genre, prob in zip(generi,probabilità):
+            st.write(f"- {genre}: **{prob*100:.2f}%**")
+        mess = "Genere corretto: "
+        if len(YGenres) < 2:
+            mess+=f"**{YGenres[0]}**"
+        else:
+            for _,g in enumerate(YGenres):
+                mess += f"**{g}**"
+                if _ < len(YGenres)-1:
+                    mess += ", "
+        st.write(mess)            
 
-import torch.nn.functional as F
-
-if st.button("Predici il genere musicale"):
-    model = MusicGenreClassifier()
-    model.load_state_dict(torch.load("modello_sicuro.pth"))
-    test_df = pd.read_csv(pathOUT)
-    new_feature_vector = preprocess_row(test_df.iloc[x])  # stessa funzione usata prima
-    new_feature_vector = scaler.transform([new_feature_vector])  # normalizzazione  
-    new_tensor = torch.tensor(new_feature_vector, dtype=torch.float32)
-
-    model.eval()
-
-    with torch.no_grad():
-        output = model(new_tensor)
-        probabilities = F.softmax(output, dim=1).numpy()[0]  # Applica softmax e ottieni l'array 1D
-
-    #print(f"Probabilità: {probabilities}")
-    top3_indices = np.argsort(probabilities)[-3:][::-1]  # Ordina e prendi i primi 3 (in ordine decrescente)
-
-    # Mappa gli indici ai nomi dei generi
-    predicted_genres = label_encoder.inverse_transform(top3_indices)
-
-    # Mostra i risultati con le probabilità
-    #print(f"🎧 Genere musicale predetto di: '{fd.iloc[x]['title']}': {predicted_genres}")    
-    for genre, prob in zip(predicted_genres, probabilities[top3_indices]):
-        st.write(f"\t{genre}: {prob*100:.2f}%")
-
-st.write("Conteggio generi")
-if st.button("Vedi quanti generi sono presenti nel dataset"):
-    g,t = count_songs_by_genre('Tracks1.csv')
-    st.write(f"Totale canzoni: {t}")
+if st.button("📊 Vedi distribuzione dei generi"):
+    g, t = count_songs_by_genre('Demo/Dataset/train_balanced.csv')
+    st.write(f"Totale canzoni nel dataset: **{t}**")
     st.write("Numero di canzoni per genere:")
-    st.write(g)
-    #st.write("Controlla la console per i risultati")
+    st.dataframe(g)
+

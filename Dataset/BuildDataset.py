@@ -17,7 +17,7 @@ sp = spotipy.Spotify(auth_manager=auth_manager)
 genres = [
     "Pop", "Rock", "Hip-Hop", "Jazz", "Blues", "Classical", "Electronic", "Reggae", "Funk", "Soul",
     "R&B", "Metal", "Punk", "Folk", "Country", "Disco", "Techno", "House", "Trance", "Drum and Bass",
-    "Dubstep", "Ambient", "Indie", "Alternative", "Latin", "K-Pop", "Afrobeat", "Gospel", "Ska", "Grunge"
+    "Dubstep", "Ambient", "Indie", "Alternative", "Latin", "Afrobeat", "Gospel", "Ska", "Grunge"
 ]
 
 brani_generi = []
