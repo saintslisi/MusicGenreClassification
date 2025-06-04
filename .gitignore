@@ -30,7 +30,9 @@ __pycache__/
 *.pem
 *.pth
 *.pkl
-*.csv
+TrackFeatures.csv
+Tracks.csv
+train_balanced.csv
 *.npz
 
 # File di editor o IDE
