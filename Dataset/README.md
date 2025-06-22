@@ -2,6 +2,9 @@
 
 **INSERIRE IL FILE `.env` nella propria directory**
 
+# link al dataset su HuggingFace
+https://huggingface.co/datasets/Granataa/MusicClassificator
+
 ## Creazione del Dataset
 
 ### BuildDataste.py

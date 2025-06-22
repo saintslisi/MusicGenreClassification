@@ -7,6 +7,7 @@ Sono stati testati diversi modelli; quello utilizzato nella demo è quello che h
 ## File
 
 - **musicClassificator.py**: script per l'addestramento effettivo del modello.
+- **musicClassificator copy.py**: modifica del file originale per le feature testuali.
 - **libProject.py**: contiene tutte le funzioni utilizzate dallo script principale.
 - **metrics.json**: contiene le metriche di alcuni dei modelli testati.
 - **par.json**: alcune delle combinazioni di parametri provate sui vari modelli.
