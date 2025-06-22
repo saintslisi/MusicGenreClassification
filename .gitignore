@@ -28,8 +28,6 @@ __pycache__/
 *.secret
 *.key
 *.pem
-*.pth
-*.pkl
 TrackFeatures.csv
 Tracks.csv
 train_balanced.csv
