@@ -31,3 +31,6 @@
 ### overSampling.py
 - Prende il dataset sistemato da `sistemaDataset.py` e lo bilancia in modo da avere lo stesso numero di canzoni per ogni genere facendo un over-sampling.
 - L'output sono due file CSV: un training set bilanciato e un test set pulito senza canzoni duplicate.
+
+### titleOnDataset.py
+- Script che legge i file CSV del training set e del test set, unendoli con un file separato contenente gli ID e i titoli dei brani. Aggiunge una nuova colonna al dataset, contenente il titolo del brano in formato testuale (lowercase).
