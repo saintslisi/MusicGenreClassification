@@ -101,7 +101,7 @@ def extract_features(path, sec=30) -> dict:
     std_interval = np.std(beat_intervals)
 
 
-
+    print(f"\n\nSTD:  {std_interval}\n\n")
     return {
         "mfccs": mfccs_summary,
         "chroma": chroma_summary,
@@ -110,8 +110,8 @@ def extract_features(path, sec=30) -> dict:
         "tempo": tempo,
         "beats": {
             "count": len(beats),
-            "interval_mean": mean_interval,
-            "interval_std": std_interval
+            "interval_mean": float(mean_interval),
+            "interval_std": float(std_interval)
         }
     }
 

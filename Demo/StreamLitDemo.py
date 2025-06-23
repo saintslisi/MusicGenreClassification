@@ -33,7 +33,7 @@ if st.session_state.input_mode == "nuova":
     if titolo and artista and "download_done" not in st.session_state:
         st.write("Scarico la canzone, attendi...")
         titoloArtista = f"{titolo} {artista}"
-        path = "Demo/Track"
+        path = "Demo/Dataset/Tracks"
         data = download_youtube_audio(titoloArtista, path, extract_sec=90)
         st.session_state.download_done = True
         st.session_state.audio_path = f"{path}/tmp.mp3"
