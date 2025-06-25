@@ -21,3 +21,5 @@ Modello di Machine Learning che, data in input una traccia audio, riesce a class
 - **Dataset**: contiene tutti i file utilizzati per creare, gestire e sistemare il dataset.
 - **Demo**: contiene i file per la demo Streamlit.
 - **Model**: contiene tutti gli script e i file utilizzati per l'addestramento del modello.
+
+La maggior parte dei tataset poichè di grandi dimensioni sono stati caricati su Hugging Face: https://huggingface.co/datasets/Granataa/MusicClassificator
